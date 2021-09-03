@@ -4,12 +4,13 @@
 import argparse
 import json
 import yaml
+import os
 
 # MySQL / MariaDB
 from MySQLdb import connect as mysql_connect, cursors
 
-# SQLite (not tested)
-#import sqlite3
+# SQLite
+import sqlite3
 
 # progress bar
 from tqdm import tqdm
@@ -63,18 +64,24 @@ def main():
     """
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--type', '-t',
+                        dest='type', action='store', required=False, type=str.lower, default='sqlite',
+                        help='type of source datebase: sqlite/mysql/mariadb')
     parser.add_argument('--user', '-u',
-                        dest='user', action='store', required=True,
+                        dest='user', action='store', required=False,
                         help='MySQL/MariaDB username')
     parser.add_argument('--password', "-p",
                         dest='password', action='store',
                         help='MySQL/MariaDB password')
     parser.add_argument('--host', '-s',
-                        dest='host', action='store', required=True,
+                        dest='host', action='store', required=False,
+                        help='MySQL/MariaDB host')
+    parser.add_argument('--port', '-o',
+                        dest='port', action='store', required=False,
                         help='MySQL/MariaDB host')
     parser.add_argument('--database', '-d',
-                        dest='database', action='store', required=True,
-                        help='MySQL/MariaDB database')
+                        dest='database', action='store', required=False, type=int, default=3306,
+                        help='MySQL/MariaDB port. MySQL 3306 (default), MariaDB 3307')
     parser.add_argument('--count', '-c',
                         dest='row_count', action='store', required=False, type=int, default=0,
                         help='If 0 (default), determine upper bound of number of rows by querying database, '
@@ -94,12 +101,16 @@ def main():
     influx = get_influx_connection(influx_config, test_write=True, test_read=True)
     converter = _generate_event_to_json(influx_config)
 
-    # connect to MySQL/MariaDB database
-    connection = mysql_connect(host=args.host, user=args.user, password=args.password, database=args.database, cursorclass=cursors.SSCursor, charset="utf8")
-    cursor = connection.cursor()
+    if args.type == 'mysql' or args.type == 'mariadb':
+        # connect to MySQL/MariaDB database
+        print("open mysql/mariadb ", host, port)
+        connection = mysql_connect(host=args.host, port=args.port, user=args.user, password=args.password, database=args.database, cursorclass=cursors.SSCursor, charset="utf8")
+    elif  args.type == 'sqlite' :
+        dbpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'home-assistant_v2.db')
+        print("open sqlite ", dbpath)
+        connection = sqlite3.connect(dbpath)
 
-    # untested: connect to SQLite file instead (you need to get rid of the first three `add_argument` calls above)
-    #connection = sqlite3.connect('home_assistant_v2.db')
+    cursor = connection.cursor()
 
     if args.row_count == 0:
         # query number of rows in states table - this will be more than the number of rows we
@@ -119,6 +130,7 @@ def main():
     batch_size_max = 512
     batch_size_cur = 0
     batch_json = []
+    
     with tqdm(total=total, mininterval=1, unit=" rows", unit_scale=True) as progress_bar:
         for row in cursor:
             progress_bar.update(1)
@@ -169,11 +181,24 @@ def main():
                 batch_size_cur += 1
 
                 if batch_size_cur >= batch_size_max:
-                    influx.write(batch_json)
+                    while True:
+                        try:
+                            influx.write(batch_json)
+                        except Exception as e:
+                            print(e)
+                        else:
+                            break
                     batch_json = []
                     batch_size_cur = 0
 
-    influx.write(batch_json)
+    while True:
+        try:
+            influx.write(batch_json)
+        except Exception as e:
+            print(e)
+        else:
+            break
+            
     influx.close()
 
     # print statistics - ideally you have one friendly name per entity_id

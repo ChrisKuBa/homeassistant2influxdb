@@ -1,5 +1,26 @@
 # Home Assistant - History to InfluxDB
 
+## Differences to the orginal
+ - SQLite is enabled by default
+ - source datebase type can be set by a parameter (mariasql/mysql/sqlit)
+ - runs independently in a docker environment - cleaner uninstall
+ - data loose beween import and using influx depends only on HA restart and db copy time 
+   - it is not recommended to copy the SQLite db without stoping HA
+ - my setup:
+   - Pi 4 + M2 SSD
+   - copy 2.5 GB SQLite
+   - 1 minute HA shutdown
+
+## Quick Steps
+  - prepare SSH to HA
+  - prepare InfluxDB to use by HA at the next HA startup (install; add db + user; add HA settings)
+  - login to SSH and clone repo
+  - prepare scripts - stop HA - copy DB - start HA
+    - for now HA write also to InfluxDB
+  - run script
+    - the old data is also in the InfluxDB
+  - cleanup
+ 
 ## Important
 
 As this script is used once and then (at least in theory) never again, I will
@@ -7,8 +28,7 @@ not be able to provide support or testing. Please check the forums as well as
 any forks of the repo for potential updates by the community.
 
 Quality of the script is also disputable given that it is a one-off. Use of
-MySQL/MariaDB is hard-coded, but (untested) lines of code to work with the
-SQLite dtabase are included (search for SQLite).
+MySQL/MariaDB and SQLite is hard-coded.
 
 Use at your own risk. (Backups recommended)
 
@@ -41,7 +61,7 @@ This script is rather simple and limited to my use-case. As it is a one-off
 and I do not have other setups readily available, I limited it to the specific
 task at hand. However, it should be easily adaptable.
 
-Namely, this handles MySQL / MariaDB only. Adding SQLite, PostgreSQL etc could
+Namely, this handles MySQL / MariaDB / SQLite only. Adding PostgreSQL etc could
 be done trivially, I believe.
 
 ## Setup
@@ -49,26 +69,58 @@ be done trivially, I believe.
 In order to not duplicate logic, the script uses the InfluxDB component of
 Home Assistant directly.
 
-I've tested this on Ubuntu 18.04 with Python 3.7.
+Tested on 
+- HomeAssistant OS with docker python image
 
-Setup:
-1. `sudo apt install python3 python3.7-dev`
-2. `git clone <this repository> migrate2influxdb`
-3. `cd migrate2influxdb`
-4. `git clone git@github.com:home-assistant/core.git home-assistant-core`
-5. `python3 -m venv .venv`
+## Preparation
+1. Enable SSH access to HomeAssistant
+   - Supervisor -> install SSH & Web Terminal
+   - configure addon
+   - disable Protecton mode (allow docker access via ssh)
+   - start addon
+2. Install InfluxDB
+   - Supervisor -> install InfluxDB
+   - configure addon
+   - start addon
+   - configure user + database
+   - configure configuration.yaml + influxdb.yaml (without !secret)
+   - Use and edit the provided influxdb.yaml example OR copy your InfluxDB 
+     configuration from Home Assistant to influxdb.yaml.
+     This should be the file that you include via `influxdb: !include influx.yaml`
+     in your installation (i.e. it does not start with `influxdb:\n`!).
+     It must not include any !secret statements but rather the token (for v2)
+     or user/password (for v1) explicitly
 
-Dependency installation:
-1. `. .venv/bin/activate`
-2. `pip install -r home-assistant-core/requirements.txt`
-3. `pip install -r requirements.txt`
+## Installation
+1. login via ssh twice (**host** session / **container** session)
+2. **container** session
+   - `docker run -it --network host --name python python bin/bash`
+   - `git clone https://github.com/chriskuba/homeassistant2influxdb.git migrate2influxdb`
+   - `cd migrate2influxdb`
+   - `git clone https://github.com/home-assistant/core.git home-assistant-core`
+   - `python3 -m venv .venv`
+   - `. .venv/bin/activate`
+   - `pip install -r requirements.txt`
+   - `pip install -r home-assistant-core/requirements.txt`
+3. **host** session
+   - if you will use the influxdb.yaml of the HA installation; otherweise  edit the template within the **container** session
+      - `docker cp /config/influxdb.yaml python:/migrate2influxdb`
+   - if you use the default sqlite db of HA
+      - `ha core stop`
+      - `docker cp /config/home-assistant_v2.db python:/migrate2influxdb`
+      - `ha core start`
 
-Run script:
-1. Copy your InfluxDB configuration from Home Assistant to influxdb.yaml.
-   This should be the file that you include via `influxdb: !include influx.yaml`
-   in your installation (i.e. it does not start with `influxdb:\n`!).
-   It must not include any !secret statements but rather the token (for v2)
-   or user/password (for v1) explicitly
-2. `. .venv/bin/activate`
-3. `python homeassistant2influxdb.py ...` (see -h for options to specify your
-   MariaDB/MySQL credentials)
+## Run script:
+1. **container** session
+   - `python homeassistant2influxdb.py ...` (see -h for options to specify your MariaDB/MySQL credentials - default is SQLite)
+
+## Cleanup:
+1. **container** session
+   - `exit` (the container)
+   - `exit` (the ssh shell)
+2. **host** session
+   - `docker container rm python`
+   - `docker image rm python`
+3. remove the SSH & Web Terminal addon from HomeAssistant or enable the Protection mode
+4. additionally use secrets in influxdb.yaml now
+5. maybe runcate / reconfgure the HA record database
