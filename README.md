@@ -1,21 +1,21 @@
 # Home Assistant - History to InfluxDB
 
-## Differences to the orginal
+## Differences to the original
  - SQLite is enabled by default
- - source datebase type can be set by a parameter (mariasql/mysql/sqlit)
- - runs independently in a docker environment - cleaner uninstall
- - data loose beween import and using influx depends only on HA restart and db copy time 
-   - it is not recommended to copy the SQLite db without stoping HA
+ - source database type can be set by a parameter (mariasql/mysql/sqlit)
+ - runs independently in a docker environment — cleaner uninstall
+ - data loose between import and using influx depends only on HA restart and db copy time 
+   - it is not recommended copying the SQLite db without stopping HA
  - my setup:
    - Pi 4 + M2 SSD
-   - copy 2.5 GB SQLite
-   - 1 minute HA shutdown
+   - copy 2.8 GB SQLite
+   - 1.5 minutes HA shutdown
 
 ## Quick Steps
   - prepare SSH to HA
   - prepare InfluxDB to use by HA at the next HA startup (install; add db + user; add HA settings)
   - login to SSH and clone repo
-  - prepare scripts - stop HA - copy DB - start HA
+  - prepare scripts — stop HA — copy DB — start HA
     - for now HA write also to InfluxDB
   - run script
     - the old data is also in the InfluxDB
@@ -40,7 +40,7 @@ MySQL/MariaDB is also quite popular and so is PostgreSQL.
 
 However, if one wants to store a lot of data over a long period of time, neither
 of these options gives the best performance. Instead, a dedicated time-series
-keeping database format like InfluxDB allows best retrieval and storage of the
+keeping database format like InfluxDB allows the best retrieval and storage of the
 data.
 
 However, if you only figure this out after already having assembled a huge amount
@@ -74,12 +74,12 @@ Tested on
 
 ## Preparation
 1. Enable SSH access to HomeAssistant
-   - Supervisor -> install SSH & Web Terminal
+   - Supervisor ⇾ install SSH & Web Terminal
    - configure addon
    - disable Protecton mode (allow docker access via ssh)
    - start addon
 2. Install InfluxDB
-   - Supervisor -> install InfluxDB
+   - Supervisor ⇾ install InfluxDB
    - configure addon
    - start addon
    - configure user + database
@@ -103,16 +103,18 @@ Tested on
    - `pip install -r requirements.txt`
    - `pip install -r home-assistant-core/requirements.txt`
 3. **host** session
-   - if you will use the influxdb.yaml of the HA installation; otherweise  edit the template within the **container** session
+   - if you will use the influxdb.yaml of the HA installation; 
+     otherwise edit the template within the **container** session
       - `docker cp /config/influxdb.yaml python:/migrate2influxdb`
    - if you use the default sqlite db of HA
       - `ha core stop`
       - `docker cp /config/home-assistant_v2.db python:/migrate2influxdb`
       - `ha core start`
+4. Check your HA logs, if the connection to InfluxDB fails after HA restart and also if some data was written into the InfluxDB. If not fix your settings and restart HA again (loose some more data) or stop — copydb — start.
 
 ## Run script:
 1. **container** session
-   - `python homeassistant2influxdb.py ...` (see -h for options to specify your MariaDB/MySQL credentials - default is SQLite)
+   - `python homeassistant2influxdb.py ...` (see -h for options to specify your MariaDB/MySQL credentials — default is SQLite)
 
 ## Cleanup:
 1. **container** session
@@ -121,6 +123,7 @@ Tested on
 2. **host** session
    - `docker container rm python`
    - `docker image rm python`
+   - `exit` (the ssh shell)
 3. remove the SSH & Web Terminal addon from HomeAssistant or enable the Protection mode
 4. additionally use secrets in influxdb.yaml now
-5. maybe runcate / reconfgure the HA record database
+5. maybe truncate / reconfigure the HA record database
